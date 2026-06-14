@@ -30,7 +30,7 @@ def send_notification(title: str, message: str):
 # ---------------------------------------------------------
 def get_clipboard_text() -> str:
     """
-    Linux (X11 / Wayland) 環境において、最も堅牢な方法でクリップボードのテキストを取得します。
+    Linux (X11 / Wayland)環境において、最も堅牢な方法でクリップボードのテキストを取得します。
     """
     # 1. xclip (X11用) の利用を試みる
     try:
@@ -120,7 +120,7 @@ def main():
         engine = create_tts_engine(config)
         audio, sample_rate = engine.synthesize(text)
 
-        # 4. 音声の再生 (設定で有効な場合、かつデータが存在する場合)
+        # 4. 音声の再生 (設定で有効な場合,かつデータが存在する場合)
         if config.get("auto_play", True) and len(audio) > 0:
             print("音声を再生しています...")
             # 一時ファイルを作成せず、メモリ上の NumPy 配列を直接オーディオデバイスに流し込みます

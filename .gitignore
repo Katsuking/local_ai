@@ -220,3 +220,13 @@ __marimo__/
 
 # Streamlit
 .streamlit/secrets.toml
+
+# ==============================================================================
+# Local AI Project Specific Ignores
+# ==============================================================================
+# 自動クローンされる StyleBertVITS2 本体とダウンロードされるモデルアセット
+style_bert_vits2_server/style-bert-vits2/
+
+# テストなどで一時作成される音声出力ファイル
+*.wav
+*.mp3

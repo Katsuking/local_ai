@@ -1,4 +1,3 @@
-# 依存ライブラリ一覧
 numpy
 soundfile
 sounddevice

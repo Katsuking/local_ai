@@ -86,6 +86,61 @@ class KokoroEngine(BaseTTSEngine):
         return full_audio, self.sample_rate
 
 # ---------------------------------------------------------
+# StyleBertVITS2 音声合成エンジンの実装 (ローカルAPIサーバー連携)
+# ---------------------------------------------------------
+class StyleBertVITS2Engine(BaseTTSEngine):
+    def __init__(self, url: str, speaker_id: int, speed: float):
+        """
+        StyleBertVITS2 エンジンを初期化します。
+        
+        Args:
+            url (str): APIサーバーの音声合成エンドポイント (例: http://localhost:5000/voice)
+            speaker_id (int): 話者ID (デフォルトのつくよみちゃんは 0)
+            speed (float): 発話速度の倍率
+        """
+        self.url = url
+        self.speaker_id = speaker_id
+        self.speed = speed
+
+    def synthesize(self, text: str) -> tuple[np.ndarray, int]:
+        """
+        ローカルAPIサーバーにリクエストを送り、メモリ上で音声データをNumPy配列にデコードして返します。
+        """
+        if not text.strip():
+            return np.array([], dtype=np.float32), 24000
+
+        import requests
+        import io
+        import soundfile as sf
+
+        print(f"[StyleBertVITS2] サーバー接続先: {self.url}")
+        print(f"[StyleBertVITS2] 音声合成を開始します: \"{text[:20]}...\"")
+
+        # APIパラメータを設定
+        # VITS系モデルは length で速度を調整するため、1.0 / speed を指定します
+        params = {
+            "text": text,
+            "speaker_id": self.speaker_id,
+            "length": 1.0 / self.speed,
+            "language": "JP"
+        }
+
+        try:
+            # サーバーに音声合成をリクエスト (タイムアウトは60秒)
+            response = requests.get(self.url, params=params, timeout=60)
+            response.raise_for_status()
+        except requests.exceptions.RequestException as e:
+            raise RuntimeError(
+                f"StyleBertVITS2 サーバーへの通信に失敗しました。サーバーが起動しているか確認してください。\nエラー詳細: {e}"
+            )
+
+        # WAVバイナリをメモリ上で読み込みます
+        audio_data, sample_rate = sf.read(io.BytesIO(response.content))
+        print(f"[StyleBertVITS2] 合成完了。サンプリングレート: {sample_rate}Hz, データ長: {len(audio_data)} サンプル")
+
+        return audio_data, sample_rate
+
+# ---------------------------------------------------------
 # 音声合成エンジンのファクトリ関数
 # 設定ファイル (config.yaml) に応じて適切なエンジンをインスタンス化します。
 # ---------------------------------------------------------
@@ -98,5 +153,10 @@ def create_tts_engine(config: dict) -> BaseTTSEngine:
         voice = model_settings.get("voice", "jf_alpha")
         speed = model_settings.get("speed", 1.0)
         return KokoroEngine(repo_id=repo_id, voice=voice, speed=speed)
+    elif active_model == "style_bert_vits2":
+        url = model_settings.get("url", "http://localhost:5000/voice")
+        speaker_id = model_settings.get("speaker_id", 0)
+        speed = model_settings.get("speed", 1.0)
+        return StyleBertVITS2Engine(url=url, speaker_id=speaker_id, speed=speed)
     else:
         raise ValueError(f"サポートされていないモデルタイプです: {active_model}")

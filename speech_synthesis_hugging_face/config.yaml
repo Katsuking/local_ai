@@ -2,8 +2,9 @@
 #
 # この設定ファイルを変更することで、使用するモデルや話者、保存先などを簡単に切り替えられます。
 
-# 現在有効な音声合成モデル ("kokoro" など)
-active_model: "kokoro"
+# 現在有効な音声合成モデル ("kokoro" または "style_bert_vits2" など)
+# ※ 人間らしい最高品質の読み上げを使用する場合は "style_bert_vits2" に設定します。
+active_model: "style_bert_vits2"
 
 # 生成した音声ファイルを保存するフォルダ（存在しない場合は自動作成されます）
 output_dir: "/home/mojo/Music/TTS_Output"
@@ -13,6 +14,15 @@ auto_play: true
 
 # 各モデルの個別設定
 models:
+  # StyleBertVITS2 (ローカルAPIサーバー経由) の設定
+  # ※ あらかじめ別プロセスのサーバーを起動しておく必要があります。
+  style_bert_vits2:
+    url: "http://localhost:5000/voice"
+    # 話者ID (つくよみちゃんモデルの場合は 0 です)
+    speaker_id: 0
+    # 話速 (0.5 から 2.0 程度)
+    speed: 1.0
+
   # Kokoro-82M モデルの設定
   kokoro:
     repo_id: "hexgrad/Kokoro-82M"
