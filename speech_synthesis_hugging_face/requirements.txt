@@ -1,0 +1,9 @@
+# 依存ライブラリ一覧
+numpy
+soundfile
+sounddevice
+pyyaml
+pyperclip
+transformers
+kokoro>=0.1.9
+misaki[ja]>=0.1.2

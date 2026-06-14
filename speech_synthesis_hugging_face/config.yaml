@@ -1,0 +1,30 @@
+# 音声合成システム 設定ファイル
+#
+# この設定ファイルを変更することで、使用するモデルや話者、保存先などを簡単に切り替えられます。
+
+# 現在有効な音声合成モデル ("kokoro" など)
+active_model: "kokoro"
+
+# 生成した音声ファイルを保存するフォルダ（存在しない場合は自動作成されます）
+output_dir: "/home/mojo/Music/TTS_Output"
+
+# 音声合成後、自動的にスピーカーから再生するかどうか (true/false)
+auto_play: true
+
+# 各モデルの個別設定
+models:
+  # Kokoro-82M モデルの設定
+  kokoro:
+    repo_id: "hexgrad/Kokoro-82M"
+    # 日本語話者のボイス名
+    # 女性: jf_alpha, jf_gloria, jf_hiroshiba, jf_tebukuro
+    # 男性: jm_koutarou
+    voice: "jf_alpha"
+    # 話速 (0.5 から 2.0 程度)
+    speed: 1.0
+
+  # （拡張用）MeloTTS 等の他のモデルの設定例
+  melotts:
+    repo_id: "myshell-ai/MeloTTS-Japanese"
+    voice: "JP"
+    speed: 1.0
