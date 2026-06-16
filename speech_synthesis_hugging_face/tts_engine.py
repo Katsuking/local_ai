@@ -105,6 +105,7 @@ class StyleBertVITS2Engine(BaseTTSEngine):
     def synthesize(self, text: str) -> tuple[np.ndarray, int]:
         """
         ローカルAPIサーバーにリクエストを送り、メモリ上で音声データをNumPy配列にデコードして返します。
+        文字数制限（100文字）を回避するため、長いテキストは適切に分割して合成し、最後に結合します。
         """
         if not text.strip():
             return np.array([], dtype=np.float32), 24000
@@ -114,29 +115,92 @@ class StyleBertVITS2Engine(BaseTTSEngine):
         import soundfile as sf
 
         print(f"[StyleBertVITS2] サーバー接続先: {self.url}")
-        print(f"[StyleBertVITS2] 音声合成を開始します: \"{text[:20]}...\"")
+        print(f"[StyleBertVITS2] 音声合成を開始します（全体文字数: {len(text)}文字）")
 
-        # APIパラメータを設定
-        # VITS系モデルは length で速度を調整するため、1.0 / speed を指定します
-        params = {
-            "text": text,
-            "speaker_id": self.speaker_id,
-            "length": 1.0 / self.speed,
-            "language": "JP"
-        }
+        # ----------------------------------------------------------------------
+        # 新機能: テキストを最大80文字程度の短い文に分割するヘルパー関数
+        # StyleBertVITS2のAPI仕様（最大100文字制限）を回避するための処理です。
+        # ----------------------------------------------------------------------
+        def split_text_for_api(input_text: str, max_len: int = 80) -> list[str]:
+            chunks = []
+            # まずは改行コードで大まかに分割します
+            lines = input_text.split('\n')
+            for line in lines:
+                line = line.strip()
+                if not line:
+                    continue
+                # 既に制限文字数以下の場合はそのまま追加
+                if len(line) <= max_len:
+                    chunks.append(line)
+                    continue
+                # 制限を超える場合は句点（。）で分割します
+                sub_lines = line.split('。')
+                for i, sub_line in enumerate(sub_lines):
+                    if i == len(sub_lines) - 1 and not sub_line.strip():
+                        continue
+                    part = sub_line.strip()
+                    if i < len(sub_lines) - 1:
+                        part += '。'
+                    if not part:
+                        continue
+                    # 句点で分割しても制限を超える場合は、さらに読点（、）で分割します
+                    if len(part) <= max_len:
+                        chunks.append(part)
+                    else:
+                        sub_parts = part.split('、')
+                        current = ""
+                        for j, p in enumerate(sub_parts):
+                            if j < len(sub_parts) - 1:
+                                p += '、'
+                            if len(current) + len(p) <= max_len:
+                                current += p
+                            else:
+                                if current:
+                                    chunks.append(current)
+                                current = p
+                        if current:
+                            chunks.append(current)
+            return chunks
 
-        try:
-            # サーバーに音声合成をリクエスト (タイムアウトは60秒)
-            response = requests.get(self.url, params=params, timeout=60)
-            response.raise_for_status()
-        except requests.exceptions.RequestException as e:
-            raise RuntimeError(
-                f"StyleBertVITS2 サーバーへの通信に失敗しました。サーバーが起動しているか確認してください。\nエラー詳細: {e}"
-            )
+        # テキストを短い文に分割
+        text_chunks = split_text_for_api(text)
+        audio_chunks = []
+        sample_rate = 24000  # デフォルト値
 
-        # WAVバイナリをメモリ上で読み込みます
-        audio_data, sample_rate = sf.read(io.BytesIO(response.content))
-        print(f"[StyleBertVITS2] 合成完了。サンプリングレート: {sample_rate}Hz, データ長: {len(audio_data)} サンプル")
+        # ----------------------------------------------------------------------
+        # 分割したテキストごとにAPIを呼び出し、音声を合成します
+        # ----------------------------------------------------------------------
+        for idx, chunk in enumerate(text_chunks):
+            print(f"[StyleBertVITS2] 部分合成中 ({idx + 1}/{len(text_chunks)}): \"{chunk[:15]}...\"")
+            params = {
+                "text": chunk,
+                "speaker_id": self.speaker_id,
+                "length": 1.0 / self.speed,
+                "language": "JP"
+            }
+
+            try:
+                # サーバーに音声合成をリクエスト (タイムアウトは60秒)
+                response = requests.get(self.url, params=params, timeout=60)
+                response.raise_for_status()
+            except requests.exceptions.RequestException as e:
+                raise RuntimeError(
+                    f"StyleBertVITS2 サーバーへの通信に失敗しました。サーバーが起動しているか確認してください。\nエラー詳細: {e}"
+                )
+
+            # メモリ上でWAVバイナリをNumPy配列に変換し、一時リストに格納
+            chunk_audio, sr = sf.read(io.BytesIO(response.content))
+            audio_chunks.append(chunk_audio)
+            sample_rate = sr
+
+        if not audio_chunks:
+            raise RuntimeError("音声合成で音声データが生成されませんでした。")
+
+        # ----------------------------------------------------------------------
+        # すべての部分音声をメモリ上で一つに結合します
+        # ----------------------------------------------------------------------
+        audio_data = np.concatenate(audio_chunks)
+        print(f"[StyleBertVITS2] 合成および結合完了。サンプリングレート: {sample_rate}Hz, 総データ長: {len(audio_data)} サンプル")
 
         return audio_data, sample_rate
 
