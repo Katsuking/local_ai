@@ -2,7 +2,7 @@
 Type=Application
 Name=Voice Input Service
 Comment=F8キーで音声入力を行うインメモリWhisperサービス
-Exec=/home/mojo/deb/local_ai/venv/bin/python /home/mojo/deb/local_ai/voice_input.py --model large-v3
+Exec=/home/mojo/Documents/dev/-local_ai/dictation/venv/bin/python /home/mojo/Documents/dev/-local_ai/dictation/voice_input.py --model large-v3
 Terminal=false
 Categories=Utility;
 X-GNOME-Autostart-enabled=true

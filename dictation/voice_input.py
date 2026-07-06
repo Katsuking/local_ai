@@ -68,12 +68,13 @@ if cuda_lib_dir:
       print(f"[音声入力] 動的リンク追加後の再起動に失敗しました: {e}")
 
 # ==============================================================================
-# 2. 必要なライブラリのインポート (環境変数が反映された状態で安全にロードされます)
+# 2. Required Library Imports (Safely loaded after dynamic link paths take effect)
 # ==============================================================================
 import time
 import threading
 import subprocess
-import fcntl  # 二重起動防止のファイルロック用に追加
+import fcntl
+import signal  # Added for IPC signaling between instances
 import numpy as np
 import sounddevice as sd
 import pyperclip
@@ -81,25 +82,27 @@ from pynput import keyboard
 from faster_whisper import WhisperModel
 
 # ==========================================
-# 2.5 二重起動チェック (排他ロックの取得)
+# 2.5 Single Instance Verification (Exclusive Lock)
 # ==========================================
 lock_file = None
 
 
 def ensure_single_instance():
   """
-  二重起動を防止するため、ロックファイルを作成して排他ロックを取得します。
-  既に別プロセスがロックを保持している場合は、即座に終了します。
+  Uses a lock file to ensure only one instance of the daemon is active.
+  Writes the active PID into the lock file to allow IPC triggers.
   """
   global lock_file
   lock_path = os.path.expanduser("~/.voice_input.lock")
   try:
     lock_file = open(lock_path, "w")
-    # flock でノンブロッキング排他ロックを取得
+    # Non-blocking exclusive lock
     fcntl.flock(lock_file, fcntl.LOCK_EX | fcntl.LOCK_NB)
+    # Write PID to lock file for signaling
+    lock_file.write(str(os.getpid()))
+    lock_file.flush()
   except IOError:
     print("[音声入力] ⚠️ 既に別の音声入力プロセスが起動しています。終了します。")
-    # 重複起動の場合はデスクトップ通知を送り、ユーザーに知らせます
     try:
       subprocess.run(["notify-send", "-t", "3000", "音声入力", "⚠️ 既に起動しています"])
     except Exception:
@@ -107,24 +110,47 @@ def ensure_single_instance():
     sys.exit(0)
 
 
-# 重複起動をチェック
-ensure_single_instance()
-
-
 # ==========================================
-# 設定パラメータと引数処理
+# CLI Argument Processing (Trigger check must run before lock checks)
 # ==========================================
-# コマンドライン引数を解析し、モデルサイズを指定できるようにします
-parser = argparse.ArgumentParser(description="F8キーによるインメモリ音声入力ツール")
+parser = argparse.ArgumentParser(description="F8 key in-memory voice input tool")
 parser.add_argument(
     "--model",
     type=str,
     default="medium",
     choices=["tiny", "base", "small", "medium", "large-v3"],
-    help="使用するWhisperモデルのサイズを指定します (デフォルト: medium)"
+    help="Specify the Whisper model size (default: medium)"
 )
-# 他のライブラリ（pynput等）の引数と競合しないように parse_known_args を使用します
+parser.add_argument(
+    "--trigger",
+    action="store_true",
+    help="Toggle recording on the running instance and exit"
+)
 args, unknown = parser.parse_known_args()
+
+# Check if this invocation is just signaling the running instance
+if args.trigger:
+  lock_path = os.path.expanduser("~/.voice_input.lock")
+  if os.path.exists(lock_path):
+    try:
+      with open(lock_path, "r") as f:
+        pid_str = f.read().strip()
+      if pid_str:
+        pid = int(pid_str)
+        # Send SIGUSR1 to target process
+        os.kill(pid, signal.SIGUSR1)
+        print(f"[音声入力] 起動中のプロセス (PID: {pid}) にシグナルを送信しました。")
+        sys.exit(0)
+    except ProcessLookupError:
+      print("[音声入力] ロックファイルは存在しますが、プロセスが見つかりません。")
+    except Exception as e:
+      print(f"[音声入力] シグナル送信エラー: {e}")
+  else:
+    print("[音声入力] 起動中のプロセスが見つかりません。")
+  sys.exit(1)
+
+# Ensure single instance daemon setup
+ensure_single_instance()
 
 MODEL_SIZE = args.model       # コマンドライン引数からモデル名を取得 (指定がない場合は medium)
 DEVICE = "cuda"               # GPU (CUDA) 加速を有効化
@@ -266,27 +292,33 @@ def paste_text(text):
   send_notification("音声入力", f"✓ 入力完了: \"{text[:15]}...\"")
 
 
-def on_press(key):
+def toggle_recording():
   """
-  キーが押されたときに呼び出されるリスナーコールバック。
-  F8キーが押された場合に、録音の開始/終了を切り替えます。
+  Toggles recording between start and stop/transcribe.
   """
   global is_recording
-  # F8 キーの入力を判定
+  if not is_recording:
+    start_recording()
+  else:
+    stop_and_transcribe()
+
+
+def on_press(key):
+  """
+  Keyboard press listener callback.
+  """
   if key == keyboard.Key.f8:
-    if not is_recording:
-      start_recording()
-    else:
-      stop_and_transcribe()
+    toggle_recording()
 
 
 def main():
   """
-  メインエントリーポイント。モデルを初期化し、グローバルキーボードリスナーを起動します。
+  Main entry point. Initializes the model, registers signal handlers,
+  and starts the keyboard listener.
   """
   global model
 
-  # 使用する CUDA ライブラリパスを特定してターミナルに出力
+  # Get the active CUDA library path to output to terminal
   used_path = None
   ld_paths = os.environ.get("LD_LIBRARY_PATH", "").split(":")
   for p in ld_paths:
@@ -301,15 +333,28 @@ def main():
   print(f"[音声入力] Whisper モデル ({MODEL_SIZE}) をロードしています...")
   send_notification("音声入力", "🚀 モデルをロード中...")
 
-  # モデルのロード (これには初回のダウンロードやGPUロードで数十秒かかる場合があります)
+  # Load the model
   model = WhisperModel(MODEL_SIZE, device=DEVICE, compute_type=COMPUTE_TYPE)
 
-  print("[音声入力] 準備完了! F8キーを押して音声入力を開始/停止してください。")
-  send_notification("音声入力", "🟢 準備完了 (F8キーで開始/停止)")
+  # Setup signal handler for USR1 to toggle recording
+  def handle_sigusr1(signum, frame):
+    toggle_recording()
 
-  # キーボード入力を監視するリスナーを起動し、メインスレッドで待機します
-  with keyboard.Listener(on_press=on_press) as listener:
-    listener.join()
+  signal.signal(signal.SIGUSR1, handle_sigusr1)
+
+  print("[音声入力] 準備完了! F8キーを押すか、シグナルを送信して音声入力を開始/停止してください。")
+  send_notification("音声入力", "🟢 準備完了 (F8キーまたはシグナルで開始/停止)")
+
+  # Start keyboard listener in non-blocking mode
+  listener = keyboard.Listener(on_press=on_press)
+  listener.start()
+
+  # Main thread loop to process signals immediately
+  try:
+    while listener.running:
+      time.sleep(0.5)
+  except KeyboardInterrupt:
+    listener.stop()
 
 
 if __name__ == "__main__":
