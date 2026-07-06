@@ -22,7 +22,7 @@ echo -e "${BLUE}==================================================${NC}"
 echo -e "\n${YELLOW}[1/5] システムパッケージのインストールを確認しています...${NC}"
 
 # 必要なパッケージのリスト
-REQUIRED_PKGS=("python3-dev" "portaudio19-dev" "xclip" "xdotool")
+REQUIRED_PKGS=("python3-dev" "python3-venv" "portaudio19-dev" "xclip" "xdotool")
 MISSING_PKGS=()
 
 for pkg in "${REQUIRED_PKGS[@]}"; do
@@ -76,6 +76,48 @@ case "$model_choice" in
     *) SELECTED_MODEL="medium" ;;
 esac
 echo -e "${GREEN}✓ ${SELECTED_MODEL} モデルが選択されました。${NC}"
+
+# If a GPU model is selected (1, 2, or 3)
+if [ "$model_choice" != "4" ]; then
+    echo -e "CUDA 環境 (libcublas.so) を確認しています..."
+    CUDA_FOUND=false
+    candidates=(
+        "/usr/local/lib/ollama/cuda_v12"
+        "/usr/local/cuda-13/lib64"
+        "/usr/local/cuda-12/lib64"
+        "/usr/local/cuda-11/lib64"
+        "/usr/local/cuda/lib64"
+        "/usr/lib/x86_64-linux-gnu"
+        "/usr/lib64"
+        "/opt/cuda/targets/x86_64-linux/lib"
+    )
+    for path in "${candidates[@]}"; do
+        if [ -d "$path" ] && ls "$path"/libcublas.so* &>/dev/null; then
+            CUDA_FOUND=true
+            echo -e "${GREEN}✓ CUDA ライブラリ (libcublas.so) が検出されました: $path${NC}"
+            break
+        fi
+    done
+    
+    # Fallback to system-wide search
+    if [ "$CUDA_FOUND" = false ]; then
+        find_match=$(find /usr/local /opt /usr/lib -name "libcublas.so*" -print -quit 2>/dev/null || true)
+        if [ -n "$find_match" ]; then
+            CUDA_FOUND=true
+            echo -e "${GREEN}✓ CUDA ライブラリ (libcublas.so) が検出されました: $find_match${NC}"
+        fi
+    fi
+
+    if [ "$CUDA_FOUND" = false ]; then
+        echo -e "${RED}❌ エラー: CUDA 共有ライブラリ (libcublas.so) が検出されませんでした。${NC}"
+        echo -e "GPU モデル (${SELECTED_MODEL}) を動作させるには、NVIDIA ドライバおよび CUDA (11/12/13 等) のインストールが必要です。"
+        echo -e "以下のいずれかの方法でインストールしてください："
+        echo -e "  - Ollama をインストールする (推奨: 自動的に必要な CUDA ライブラリが導入されます)"
+        echo -e "  - NVIDIA 公式の CUDA Toolkit をインストールする"
+        echo -e "\nCPU のみで動作させる場合は、再度本スクリプトを実行し、'4) tiny' モデルを選択してください。"
+        exit 1
+    fi
+fi
 
 
 # ==========================================

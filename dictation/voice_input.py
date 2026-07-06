@@ -14,33 +14,38 @@ import argparse
 
 def find_cuda_library_path():
   """
-  システム上の libcublas.so.12 の配置ディレクトリを自動検知します。
+  Locates the directory containing the libcublas shared library.
+  Supports various CUDA versions (libcublas.so.11, .12, .13, etc.).
   """
-  # すでにシステム（LD_LIBRARY_PATH等）が libcublas.so.12 を見つけられる場合は追加設定不要
+  # If the system can already find libcublas, no need to add custom path
   if ctypes.util.find_library("cublas"):
     return None
 
-  # 代表的な CUDA 12 の配置パス（Ollama、公式ツールキット、apt等）
+  # Standard candidate directories for CUDA installations
   candidates = [
       "/usr/local/lib/ollama/cuda_v12",     # Ollama (CUDA 12)
-      "/usr/local/cuda-12/lib64",            # 公式 CUDA Toolkit 12
-      "/usr/local/cuda/lib64",               # 公式 CUDA シンボリックリンク
-      "/usr/lib/x86_64-linux-gnu",           # apt で入る一般的なライブラリパス
-      "/usr/lib64",                          # 一部のディストリビューション
-      "/opt/cuda/targets/x86_64-linux/lib",  # Arch Linux など
+      "/usr/local/cuda-13/lib64",            # Official CUDA Toolkit 13
+      "/usr/local/cuda-12/lib64",            # Official CUDA Toolkit 12
+      "/usr/local/cuda-11/lib64",            # Official CUDA Toolkit 11
+      "/usr/local/cuda/lib64",               # Symbolic link
+      "/usr/lib/x86_64-linux-gnu",           # Standard apt path
+      "/usr/lib64",                          # Other distros
+      "/opt/cuda/targets/x86_64-linux/lib",  # Arch Linux, etc.
   ]
 
   for path in candidates:
-    if os.path.isdir(path) and os.path.exists(os.path.join(path, "libcublas.so.12")):
-      return path
+    if os.path.isdir(path):
+      # Look for any libcublas.so files in this directory
+      files = glob.glob(os.path.join(path, "libcublas.so*"))
+      if files:
+        return path
 
-  # 候補になければ、主要なシステムディレクトリ内を高速スキャン
+  # Fallback to system-wide recursive search if not found in candidate paths
   search_dirs = ["/usr/local", "/opt", "/usr/lib"]
   for s_dir in search_dirs:
     if os.path.isdir(s_dir):
-      # glob.glob で libcublas.so.12 の場所を探す
       matches = glob.glob(os.path.join(
-          s_dir, "**/libcublas.so.12"), recursive=True)
+          s_dir, "**/libcublas.so*"), recursive=True)
       if matches:
         return os.path.dirname(matches[0])
 
