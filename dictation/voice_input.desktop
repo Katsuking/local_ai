@@ -1,7 +1,7 @@
 [Desktop Entry]
 Type=Application
 Name=Voice Input Service
-Comment=F6キーで音声入力を行うインメモリWhisperサービス
+Comment=F8キーで音声入力を行うインメモリWhisperサービス
 Exec=/home/mojo/Documents/dev/local_ai/dictation/venv/bin/python /home/mojo/Documents/dev/local_ai/dictation/voice_input.py --model large-v3
 Terminal=false
 Categories=Utility;
