@@ -113,7 +113,7 @@ def ensure_single_instance():
 # ==========================================
 # CLI Argument Processing (Trigger check must run before lock checks)
 # ==========================================
-parser = argparse.ArgumentParser(description="F8 key in-memory voice input tool")
+parser = argparse.ArgumentParser(description="F6 key in-memory voice input tool")
 parser.add_argument(
     "--model",
     type=str,
@@ -307,7 +307,7 @@ def on_press(key):
   """
   Keyboard press listener callback.
   """
-  if key == keyboard.Key.f8:
+  if key == keyboard.Key.f6:
     toggle_recording()
 
 
@@ -342,8 +342,8 @@ def main():
 
   signal.signal(signal.SIGUSR1, handle_sigusr1)
 
-  print("[音声入力] 準備完了! F8キーを押すか、シグナルを送信して音声入力を開始/停止してください。")
-  send_notification("音声入力", "🟢 準備完了 (F8キーまたはシグナルで開始/停止)")
+  print("[音声入力] 準備完了! F6キーを押すか、シグナルを送信して音声入力を開始/停止してください。")
+  send_notification("音声入力", "🟢 準備完了 (F6キーまたはシグナルで開始/停止)")
 
   # Start keyboard listener in non-blocking mode
   listener = keyboard.Listener(on_press=on_press)
